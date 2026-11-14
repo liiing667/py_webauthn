@@ -22,6 +22,7 @@ from .parse_registration_options_json import parse_registration_options_json
 from .validate_certificate_chain import validate_certificate_chain
 from .verify_safetynet_timestamp import verify_safetynet_timestamp
 from .verify_signature import verify_signature
+from .verify_top_origin import normalize_origin, verify_top_origin
 
 __all__ = [
     "aaguid_to_string",
@@ -48,4 +49,6 @@ __all__ = [
     "validate_certificate_chain",
     "verify_safetynet_timestamp",
     "verify_signature",
+    "normalize_origin",
+    "verify_top_origin",
 ]

@@ -41,6 +41,11 @@ def parse_client_data_json(val: bytes) -> CollectedClientData:
         cross_origin = bool(json_dict["crossOrigin"])
         client_data.cross_origin = cross_origin
 
+    if "topOrigin" in json_dict:
+        top_origin = json_dict["topOrigin"]
+        if isinstance(top_origin, str):
+            client_data.top_origin = top_origin
+
     if "tokenBinding" in json_dict:
         token_binding_dict = json_dict["tokenBinding"]
 

@@ -11,9 +11,13 @@ from webauthn.helpers import (
     parse_client_data_json,
     parse_backup_flags,
     parse_registration_credential_json,
+    verify_top_origin,
 )
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
-from webauthn.helpers.exceptions import InvalidRegistrationResponse
+from webauthn.helpers.exceptions import (
+    InvalidCrossOriginRegistrationResponse,
+    InvalidRegistrationResponse,
+)
 from webauthn.helpers.structs import (
     AttestationFormat,
     ClientDataType,
@@ -70,6 +74,7 @@ def verify_registration_response(
     expected_challenge: bytes,
     expected_rp_id: str,
     expected_origin: Union[str, List[str]],
+    expected_top_origins: Optional[List[str]] = None,
     require_user_presence: bool = True,
     require_user_verification: bool = False,
     supported_pub_key_algs: List[COSEAlgorithmIdentifier] = default_supported_pub_key_algs,
@@ -86,6 +91,9 @@ def verify_registration_response(
           registration options.
         - `expected_origin`: The domain, with HTTP protocol (e.g. "https://domain.here"), on which
           the registration should have occurred. Can also be a list of expected origins.
+        - (optional) `expected_top_origins`: A list of top-level origins allowed to embed this
+          RP's page in a cross-origin context (e.g. "https://partner.example"). Cross-origin
+          ceremonies are rejected unless their top origin matches one of these values.
         - (optional) `require_user_presence`: Whether or not to require that the user was present
             during the registration. Should be False during auto registration.
         - (optional) `require_user_verification`: Whether or not to require that the authenticator
@@ -148,6 +156,12 @@ def verify_registration_response(
             raise InvalidRegistrationResponse(
                 f'Unexpected client data origin "{client_data.origin}", expected one of {expected_origin}'
             )
+
+    verify_top_origin(
+        client_data=client_data,
+        expected_top_origins=expected_top_origins,
+        exception=InvalidCrossOriginRegistrationResponse,
+    )
 
     if client_data.token_binding:
         status = client_data.token_binding.status

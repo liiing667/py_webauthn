@@ -89,6 +89,37 @@ class TestParseClientDataJSON(TestCase):
 
         assert output.cross_origin is None
 
+    def test_include_top_origin_when_present(self):
+        client_data_str = json.dumps(
+            {
+                "type": "webauthn.create",
+                "challenge": bytes_to_base64url(b"challenge"),
+                "origin": "https://login.example.com",
+                "crossOrigin": True,
+                "topOrigin": "https://partner.example.com",
+            }
+        )
+        client_data_bytes = client_data_str.encode("utf-8")
+
+        output = parse_client_data_json(client_data_bytes)
+
+        assert output.cross_origin is True
+        assert output.top_origin == "https://partner.example.com"
+
+    def test_omit_top_origin_if_not_present(self):
+        client_data_str = json.dumps(
+            {
+                "type": "webauthn.create",
+                "challenge": bytes_to_base64url(b"challenge"),
+                "origin": "http://localhost:5000",
+            }
+        )
+        client_data_bytes = client_data_str.encode("utf-8")
+
+        output = parse_client_data_json(client_data_bytes)
+
+        assert output.top_origin is None
+
     def test_omit_token_binding_if_not_present(self):
         client_data_str = json.dumps(
             {

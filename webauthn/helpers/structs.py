@@ -281,6 +281,7 @@ class CollectedClientData:
         `challenge`: The challenge passed to the authenticator within the options
         `origin`: The base domain with protocol on which the registration or authentication ceremony took place (e.g. "https://foo.bar")
         (optional) `cross_origin`: Whether or not the registration or authentication ceremony took place on a different origin (think within an <iframe>)
+        (optional) `top_origin`: The origin of the top-level frame when the ceremony took place in a cross-origin context
         (optional) `token_binding`: Information on the state of the Token Binding protocol
 
     https://www.w3.org/TR/webauthn-2/#dictdef-collectedclientdata
@@ -290,6 +291,7 @@ class CollectedClientData:
     challenge: bytes
     origin: str
     cross_origin: Optional[bool] = None
+    top_origin: Optional[str] = None
     token_binding: Optional[TokenBinding] = None
 
 

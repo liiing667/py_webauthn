@@ -1,10 +1,21 @@
+import hashlib
+import json
 from unittest import TestCase
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+
 from webauthn import verify_authentication_response
-from webauthn.helpers import base64url_to_bytes, parse_authentication_credential_json
+from webauthn.helpers import (
+    base64url_to_bytes,
+    bytes_to_base64url,
+    encode_cbor,
+    parse_authentication_credential_json,
+)
 from webauthn.helpers.exceptions import (
     InvalidAuthenticationResponse,
     InvalidAuthenticatorDataStructure,
+    InvalidCrossOriginAuthenticationResponse,
     InvalidJSONStructure,
 )
 
@@ -358,3 +369,144 @@ class TestVerifyAuthenticationResponse(TestCase):
             )
 
         self.assertIsInstance(raised.exception.__cause__, InvalidJSONStructure)
+
+
+class TestVerifyAuthenticationResponseCrossOrigin(TestCase):
+    credential = """{
+        "id": "EDx9FfAbp4obx6oll2oC4-CZuDidRVV4gZhxC529ytlnqHyqCStDUwfNdm1SNHAe3X5KvueWQdAX3x9R1a2b9Q",
+        "rawId": "EDx9FfAbp4obx6oll2oC4-CZuDidRVV4gZhxC529ytlnqHyqCStDUwfNdm1SNHAe3X5KvueWQdAX3x9R1a2b9Q",
+        "response": {
+            "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MBAAAATg",
+            "clientDataJSON": "eyJjaGFsbGVuZ2UiOiJ4aTMwR1BHQUZZUnhWRHBZMXNNMTBEYUx6VlFHNjZudi1fN1JVYXpIMHZJMll2RzhMWWdERW52TjVmWlpOVnV2RUR1TWk5dGUzVkxxYjQyTjBma0xHQSIsImNsaWVudEV4dGVuc2lvbnMiOnt9LCJoYXNoQWxnb3JpdGhtIjoiU0hBLTI1NiIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6NTAwMCIsInR5cGUiOiJ3ZWJhdXRobi5nZXQifQ",
+            "signature": "MEUCIGisVZOBapCWbnJJvjelIzwpixxIwkjCCb5aCHafQu68AiEA88v-2pJNNApPFwAKFiNuf82-2hBxYW5kGwVweeoxCwo"
+        },
+        "type": "public-key",
+        "clientExtensionResults": {}
+    }"""
+
+    challenge = base64url_to_bytes(
+        "xi30GPGAFYRxVDpY1sM10DaLzVQG66nv-_7RUazH0vI2YvG8LYgDEnvN5fZZNVuvEDuMi9te3VLqb42N0fkLGA"
+    )
+    credential_public_key = base64url_to_bytes(
+        "pQECAyYgASFYIIeDTe-gN8A-zQclHoRnGFWN8ehM1b7yAsa8I8KIvmplIlgg4nFGT5px8o6gpPZZhO01wdy9crDSA_Ngtkx0vGpvPHI"
+    )
+
+    def _credential_with_client_data(self, updates: dict) -> str:
+        credential = json.loads(self.credential)
+        client_data = json.loads(
+            base64url_to_bytes(credential["response"]["clientDataJSON"])
+        )
+        client_data.update(updates)
+        credential["response"]["clientDataJSON"] = bytes_to_base64url(
+            json.dumps(client_data).encode("utf-8")
+        )
+        return json.dumps(credential)
+
+    def _verify(self, credential: str, **kwargs):
+        return verify_authentication_response(
+            credential=credential,
+            expected_challenge=self.challenge,
+            expected_rp_id="localhost",
+            expected_origin="http://localhost:5000",
+            credential_public_key=self.credential_public_key,
+            credential_current_sign_count=77,
+            **kwargs,
+        )
+
+    def test_rejects_cross_origin_by_default(self) -> None:
+        credential = self._credential_with_client_data(
+            {"crossOrigin": True, "topOrigin": "https://embedder.example"}
+        )
+
+        with self.assertRaises(InvalidCrossOriginAuthenticationResponse) as raised:
+            self._verify(credential)
+
+        # The failure is distinguishable but still an invalid authentication response
+        self.assertIsInstance(raised.exception, InvalidAuthenticationResponse)
+
+    def test_rejects_cross_origin_without_top_origin(self) -> None:
+        credential = self._credential_with_client_data({"crossOrigin": True})
+
+        with self.assertRaises(InvalidCrossOriginAuthenticationResponse):
+            self._verify(
+                credential,
+                expected_top_origins=["https://embedder.example"],
+            )
+
+    def test_rejects_top_origin_not_in_allowlist(self) -> None:
+        credential = self._credential_with_client_data(
+            {"crossOrigin": True, "topOrigin": "https://evil.example"}
+        )
+
+        with self.assertRaises(InvalidCrossOriginAuthenticationResponse):
+            self._verify(
+                credential,
+                expected_top_origins=["https://embedder.example"],
+            )
+
+    def test_allows_allowlisted_top_origin(self) -> None:
+        # Generate a fresh credential so the signature stays valid over a
+        # clientDataJSON that includes crossOrigin and topOrigin
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        public_numbers = private_key.public_key().public_numbers()
+        credential_public_key = encode_cbor(
+            {
+                1: 2,
+                3: -7,
+                -1: 1,
+                -2: public_numbers.x.to_bytes(32, "big"),
+                -3: public_numbers.y.to_bytes(32, "big"),
+            }
+        )
+
+        rp_id = "localhost"
+        origin = "https://login.partner.example"
+        challenge = b"a" * 32
+        credential_id = b"credential-id"
+
+        authenticator_data = (
+            hashlib.sha256(rp_id.encode("utf-8")).digest()
+            + b"\x01"
+            + (1).to_bytes(4, "big")
+        )
+        client_data_bytes = json.dumps(
+            {
+                "type": "webauthn.get",
+                "challenge": bytes_to_base64url(challenge),
+                "origin": origin,
+                "crossOrigin": True,
+                "topOrigin": "https://Embedder.Example:443/",
+            }
+        ).encode("utf-8")
+        client_data_hash = hashlib.sha256(client_data_bytes).digest()
+        signature = private_key.sign(
+            authenticator_data + client_data_hash,
+            ec.ECDSA(hashes.SHA256()),
+        )
+
+        credential = json.dumps(
+            {
+                "id": bytes_to_base64url(credential_id),
+                "rawId": bytes_to_base64url(credential_id),
+                "response": {
+                    "authenticatorData": bytes_to_base64url(authenticator_data),
+                    "clientDataJSON": bytes_to_base64url(client_data_bytes),
+                    "signature": bytes_to_base64url(signature),
+                },
+                "type": "public-key",
+                "clientExtensionResults": {},
+            }
+        )
+
+        verification = verify_authentication_response(
+            credential=credential,
+            expected_challenge=challenge,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+            expected_top_origins=["https://embedder.example"],
+            credential_public_key=credential_public_key,
+            credential_current_sign_count=0,
+        )
+
+        assert verification.credential_id == credential_id
+        assert verification.new_sign_count == 1

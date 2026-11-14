@@ -18,6 +18,24 @@ class InvalidAuthenticationResponse(WebAuthnException):
     pass
 
 
+class InvalidCrossOriginCeremony(WebAuthnException):
+    """A cross-origin ceremony was rejected by the top-origin policy"""
+
+    pass
+
+
+class InvalidCrossOriginRegistrationResponse(
+    InvalidRegistrationResponse, InvalidCrossOriginCeremony
+):
+    pass
+
+
+class InvalidCrossOriginAuthenticationResponse(
+    InvalidAuthenticationResponse, InvalidCrossOriginCeremony
+):
+    pass
+
+
 class InvalidPublicKeyStructure(WebAuthnException):
     pass
 

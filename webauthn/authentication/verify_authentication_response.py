@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import hashlib
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from cryptography.exceptions import InvalidSignature
 
@@ -14,8 +14,12 @@ from webauthn.helpers import (
     parse_client_data_json,
     parse_authentication_credential_json,
     verify_signature,
+    verify_top_origin,
 )
-from webauthn.helpers.exceptions import InvalidAuthenticationResponse
+from webauthn.helpers.exceptions import (
+    InvalidAuthenticationResponse,
+    InvalidCrossOriginAuthenticationResponse,
+)
 from webauthn.helpers.structs import (
     AuthenticationCredential,
     ClientDataType,
@@ -50,6 +54,7 @@ def verify_authentication_response(
     expected_challenge: bytes,
     expected_rp_id: str,
     expected_origin: Union[str, List[str]],
+    expected_top_origins: Optional[List[str]] = None,
     credential_public_key: bytes,
     credential_current_sign_count: int,
     require_user_verification: bool = False,
@@ -65,6 +70,9 @@ def verify_authentication_response(
           authentication options.
         - `expected_origin`: The domain, with HTTP protocol (e.g. "https://domain.here"), on which
           the authentication ceremony should have occurred.
+        - (optional) `expected_top_origins`: A list of top-level origins allowed to embed this
+          RP's page in a cross-origin context (e.g. "https://partner.example"). Cross-origin
+          ceremonies are rejected unless their top origin matches one of these values.
         - `credential_public_key`: The public key for the credential's ID as provided in a
           preceding authenticator registration ceremony.
         - `credential_current_sign_count`: The current known number of times the authenticator was
@@ -124,6 +132,12 @@ def verify_authentication_response(
             raise InvalidAuthenticationResponse(
                 f'Unexpected client data origin "{client_data.origin}", expected one of {expected_origin}'
             )
+
+    verify_top_origin(
+        client_data=client_data,
+        expected_top_origins=expected_top_origins,
+        exception=InvalidCrossOriginAuthenticationResponse,
+    )
 
     if client_data.token_binding:
         status = client_data.token_binding.status

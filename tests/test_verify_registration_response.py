@@ -12,6 +12,7 @@ from webauthn.helpers import (
 )
 from webauthn.helpers.exceptions import (
     InvalidAttestationObjectStructure,
+    InvalidCrossOriginRegistrationResponse,
     InvalidRegistrationResponse,
     InvalidJSONStructure,
 )
@@ -454,3 +455,87 @@ class TestVerifyRegistrationResponse(TestCase):
             )
 
         self.assertIsInstance(raised.exception.__cause__, InvalidJSONStructure)
+
+
+class TestVerifyRegistrationResponseCrossOrigin(TestCase):
+    credential = """{
+        "id": "9y1xA8Tmg1FEmT-c7_fvWZ_uoTuoih3OvR45_oAK-cwHWhAbXrl2q62iLVTjiyEZ7O7n-CROOY494k7Q3xrs_w",
+        "rawId": "9y1xA8Tmg1FEmT-c7_fvWZ_uoTuoih3OvR45_oAK-cwHWhAbXrl2q62iLVTjiyEZ7O7n-CROOY494k7Q3xrs_w",
+        "response": {
+            "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVjESZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAFwAAAAAAAAAAAAAAAAAAAAAAQPctcQPE5oNRRJk_nO_371mf7qE7qIodzr0eOf6ACvnMB1oQG165dqutoi1U44shGezu5_gkTjmOPeJO0N8a7P-lAQIDJiABIVggSFbUJF-42Ug3pdM8rDRFu_N5oiVEysPDB6n66r_7dZAiWCDUVnB39FlGypL-qAoIO9xWHtJygo2jfDmHl-_eKFRLDA",
+            "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiVHdON240V1R5R0tMYzRaWS1xR3NGcUtuSE00bmdscXN5VjBJQ0psTjJUTzlYaVJ5RnRya2FEd1V2c3FsLWdrTEpYUDZmbkYxTWxyWjUzTW00UjdDdnciLCJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjUwMDAiLCJjcm9zc09yaWdpbiI6ZmFsc2V9"
+        },
+        "type": "public-key",
+        "clientExtensionResults": {},
+        "transports": [
+            "nfc",
+            "usb"
+        ]
+    }"""
+
+    challenge = base64url_to_bytes(
+        "TwN7n4WTyGKLc4ZY-qGsFqKnHM4nglqsyV0ICJlN2TO9XiRyFtrkaDwUvsql-gkLJXP6fnF1MlrZ53Mm4R7Cvw"
+    )
+
+    def _credential_with_client_data(self, updates: dict) -> str:
+        credential = json.loads(self.credential)
+        client_data = json.loads(
+            base64url_to_bytes(credential["response"]["clientDataJSON"])
+        )
+        client_data.update(updates)
+        credential["response"]["clientDataJSON"] = bytes_to_base64url(
+            json.dumps(client_data).encode("utf-8")
+        )
+        return json.dumps(credential)
+
+    def _verify(self, credential: str, **kwargs):
+        return verify_registration_response(
+            credential=credential,
+            expected_challenge=self.challenge,
+            expected_origin="http://localhost:5000",
+            expected_rp_id="localhost",
+            **kwargs,
+        )
+
+    def test_rejects_cross_origin_by_default(self) -> None:
+        credential = self._credential_with_client_data(
+            {"crossOrigin": True, "topOrigin": "https://embedder.example"}
+        )
+
+        with self.assertRaises(InvalidCrossOriginRegistrationResponse) as raised:
+            self._verify(credential)
+
+        # The failure is distinguishable but still an invalid registration response
+        self.assertIsInstance(raised.exception, InvalidRegistrationResponse)
+
+    def test_rejects_cross_origin_without_top_origin(self) -> None:
+        credential = self._credential_with_client_data({"crossOrigin": True})
+
+        with self.assertRaises(InvalidCrossOriginRegistrationResponse):
+            self._verify(
+                credential,
+                expected_top_origins=["https://embedder.example"],
+            )
+
+    def test_rejects_top_origin_not_in_allowlist(self) -> None:
+        credential = self._credential_with_client_data(
+            {"crossOrigin": True, "topOrigin": "https://evil.example"}
+        )
+
+        with self.assertRaises(InvalidCrossOriginRegistrationResponse):
+            self._verify(
+                credential,
+                expected_top_origins=["https://embedder.example"],
+            )
+
+    def test_allows_allowlisted_top_origin(self) -> None:
+        credential = self._credential_with_client_data(
+            {"crossOrigin": True, "topOrigin": "https://Embedder.Example:443/"}
+        )
+
+        verification = self._verify(
+            credential,
+            expected_top_origins=["https://embedder.example"],
+        )
+
+        assert verification.fmt == AttestationFormat.NONE
