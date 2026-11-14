@@ -50,6 +50,7 @@ def verify_authentication_response(
     expected_challenge: bytes,
     expected_rp_id: str,
     expected_origin: Union[str, List[str]],
+    allow_cross_origin: bool = False,
     credential_public_key: bytes,
     credential_current_sign_count: int,
     require_user_verification: bool = False,
@@ -65,6 +66,11 @@ def verify_authentication_response(
           authentication options.
         - `expected_origin`: The domain, with HTTP protocol (e.g. "https://domain.here"), on which
           the authentication ceremony should have occurred.
+        - (optional) `allow_cross_origin`: Whether or not to allow a cross-origin ceremony (i.e.
+            one that took place within an <iframe> on a different origin). Defaults to False, in
+            which case a response with `crossOrigin: true` in its client data is rejected. When
+            True, `expected_rp_id`, `expected_origin`, and `expected_challenge` are still strictly
+            verified.
         - `credential_public_key`: The public key for the credential's ID as provided in a
           preceding authenticator registration ceremony.
         - `credential_current_sign_count`: The current known number of times the authenticator was
@@ -124,6 +130,11 @@ def verify_authentication_response(
             raise InvalidAuthenticationResponse(
                 f'Unexpected client data origin "{client_data.origin}", expected one of {expected_origin}'
             )
+
+    if not allow_cross_origin and client_data.cross_origin:
+        raise InvalidAuthenticationResponse(
+            "Client data indicated a cross-origin ceremony, but allow_cross_origin was False"
+        )
 
     if client_data.token_binding:
         status = client_data.token_binding.status

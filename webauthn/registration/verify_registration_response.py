@@ -70,6 +70,7 @@ def verify_registration_response(
     expected_challenge: bytes,
     expected_rp_id: str,
     expected_origin: Union[str, List[str]],
+    allow_cross_origin: bool = False,
     require_user_presence: bool = True,
     require_user_verification: bool = False,
     supported_pub_key_algs: List[COSEAlgorithmIdentifier] = default_supported_pub_key_algs,
@@ -86,6 +87,11 @@ def verify_registration_response(
           registration options.
         - `expected_origin`: The domain, with HTTP protocol (e.g. "https://domain.here"), on which
           the registration should have occurred. Can also be a list of expected origins.
+        - (optional) `allow_cross_origin`: Whether or not to allow a cross-origin ceremony (i.e.
+            one that took place within an <iframe> on a different origin). Defaults to False, in
+            which case a response with `crossOrigin: true` in its client data is rejected. When
+            True, `expected_rp_id`, `expected_origin`, and `expected_challenge` are still strictly
+            verified.
         - (optional) `require_user_presence`: Whether or not to require that the user was present
             during the registration. Should be False during auto registration.
         - (optional) `require_user_verification`: Whether or not to require that the authenticator
@@ -148,6 +154,11 @@ def verify_registration_response(
             raise InvalidRegistrationResponse(
                 f'Unexpected client data origin "{client_data.origin}", expected one of {expected_origin}'
             )
+
+    if not allow_cross_origin and client_data.cross_origin:
+        raise InvalidRegistrationResponse(
+            "Client data indicated a cross-origin ceremony, but allow_cross_origin was False"
+        )
 
     if client_data.token_binding:
         status = client_data.token_binding.status

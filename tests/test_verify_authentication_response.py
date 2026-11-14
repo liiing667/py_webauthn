@@ -358,3 +358,105 @@ class TestVerifyAuthenticationResponse(TestCase):
             )
 
         self.assertIsInstance(raised.exception.__cause__, InvalidJSONStructure)
+
+    def test_rejects_cross_origin_response_by_default(self):
+        credential = """{
+            "id": "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ",
+            "rawId": "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ",
+            "response": {
+                "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MBAAAAAQ",
+                "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWTNKdmMzTXRiM0pwWjJsdUxXRjFkR2d0WTJoaGJHeGxibWRsIiwib3JpZ2luIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSIsImNyb3NzT3JpZ2luIjp0cnVlfQ",
+                "signature": "MEUCIHrb9jyOPjogx10mbEPHwIIouYucvL-R6bAJ-hWB3SqJAiEArFfbIDvmNIIlLDuXZUdWMggr_Yp9c-TqOJfqr3x2_Os"
+            },
+            "type": "public-key",
+            "clientExtensionResults": {}
+        }"""
+
+        with self.assertRaisesRegex(
+            InvalidAuthenticationResponse,
+            "cross-origin",
+        ):
+            verify_authentication_response(
+                credential=credential,
+                expected_challenge=base64url_to_bytes("Y3Jvc3Mtb3JpZ2luLWF1dGgtY2hhbGxlbmdl"),
+                expected_rp_id="localhost",
+                expected_origin="https://example.com",
+                credential_public_key=base64url_to_bytes(
+                    "pQECAyYgASFYIOMDYFoV3zXaXXfGXovIaa00QvTWKOeZuTgXY25WM5ibIlggqK_EsDDE5LCCR9p6z6-_z4cvPKQHiHMa032y8BunM9g"
+                ),
+                credential_current_sign_count=0,
+            )
+
+    def test_allows_cross_origin_response_when_opted_in(self):
+        credential = """{
+            "id": "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ",
+            "rawId": "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ",
+            "response": {
+                "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MBAAAAAQ",
+                "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWTNKdmMzTXRiM0pwWjJsdUxXRjFkR2d0WTJoaGJHeGxibWRsIiwib3JpZ2luIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSIsImNyb3NzT3JpZ2luIjp0cnVlfQ",
+                "signature": "MEUCIHrb9jyOPjogx10mbEPHwIIouYucvL-R6bAJ-hWB3SqJAiEArFfbIDvmNIIlLDuXZUdWMggr_Yp9c-TqOJfqr3x2_Os"
+            },
+            "type": "public-key",
+            "clientExtensionResults": {}
+        }"""
+
+        verification = verify_authentication_response(
+            credential=credential,
+            expected_challenge=base64url_to_bytes("Y3Jvc3Mtb3JpZ2luLWF1dGgtY2hhbGxlbmdl"),
+            expected_rp_id="localhost",
+            expected_origin="https://example.com",
+            credential_public_key=base64url_to_bytes(
+                "pQECAyYgASFYIOMDYFoV3zXaXXfGXovIaa00QvTWKOeZuTgXY25WM5ibIlggqK_EsDDE5LCCR9p6z6-_z4cvPKQHiHMa032y8BunM9g"
+            ),
+            credential_current_sign_count=0,
+            allow_cross_origin=True,
+        )
+
+        assert verification.credential_id == base64url_to_bytes(
+            "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ"
+        )
+        assert verification.new_sign_count == 1
+
+    def test_still_verifies_rp_id_and_challenge_when_allowing_cross_origin(self):
+        credential = """{
+            "id": "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ",
+            "rawId": "Y3Jvc3Mtb3JpZ2luLWNyZWRlbnRpYWwtaWQ",
+            "response": {
+                "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MBAAAAAQ",
+                "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWTNKdmMzTXRiM0pwWjJsdUxXRjFkR2d0WTJoaGJHeGxibWRsIiwib3JpZ2luIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSIsImNyb3NzT3JpZ2luIjp0cnVlfQ",
+                "signature": "MEUCIHrb9jyOPjogx10mbEPHwIIouYucvL-R6bAJ-hWB3SqJAiEArFfbIDvmNIIlLDuXZUdWMggr_Yp9c-TqOJfqr3x2_Os"
+            },
+            "type": "public-key",
+            "clientExtensionResults": {}
+        }"""
+        credential_public_key = base64url_to_bytes(
+            "pQECAyYgASFYIOMDYFoV3zXaXXfGXovIaa00QvTWKOeZuTgXY25WM5ibIlggqK_EsDDE5LCCR9p6z6-_z4cvPKQHiHMa032y8BunM9g"
+        )
+
+        with self.assertRaisesRegex(
+            InvalidAuthenticationResponse,
+            "Unexpected RP ID hash",
+        ):
+            verify_authentication_response(
+                credential=credential,
+                expected_challenge=base64url_to_bytes("Y3Jvc3Mtb3JpZ2luLWF1dGgtY2hhbGxlbmdl"),
+                expected_rp_id="example.com",
+                expected_origin="https://example.com",
+                credential_public_key=credential_public_key,
+                credential_current_sign_count=0,
+                allow_cross_origin=True,
+            )
+
+        with self.assertRaisesRegex(
+            InvalidAuthenticationResponse,
+            "Client data challenge was not expected challenge",
+        ):
+            verify_authentication_response(
+                credential=credential,
+                expected_challenge=b"some-other-challenge",
+                expected_rp_id="localhost",
+                expected_origin="https://example.com",
+                credential_public_key=credential_public_key,
+                credential_current_sign_count=0,
+                allow_cross_origin=True,
+            )
