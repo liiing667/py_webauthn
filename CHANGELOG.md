@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+**Changes:**
+
+- `verify_authentication_response()` now returns auditable state changes. `VerifiedAuthentication` gains a `sign_count` audit (with `SignCountStatus` distinguishing `incremented`, `not_supported`, and `rolled_back` counters) and a `backup_state` audit (recording backup flag changes and single-device to multi-device credential migrations), so Relying Parties no longer have to interpret the signature counter and backup flags themselves
+- Synced passkeys and other authenticators that report a constant zero signature counter continue to authenticate successfully; counters that fail to advance while in use still fail and are now classified with the stable `AuthenticationFailureCode.SIGN_COUNT_ROLLED_BACK` code
+- `InvalidAuthenticationResponse` and `InvalidRegistrationResponse` now carry a stable, machine-readable `code` attribute (`AuthenticationFailureCode` and `RegistrationFailureCode` respectively) so that callers can branch on failure reasons without matching error message strings
+- `verify_authentication_response()` accepts optional `expected_credential_device_type` and `expected_credential_backed_up` arguments. When provided, backup flags in the response are compared against the stored credential record: legitimate backup-state transitions and single-device to multi-device migrations are audited and accepted, while contradictory flags and unexpected reversions are rejected with stable failure codes
+- Contradictory backup flags no longer surface as the lower-level `InvalidBackupFlags` from `verify_authentication_response()` and `verify_registration_response()`; they are normalized into the corresponding response exception with `INVALID_BACKUP_FLAGS` while preserving the original error as `__cause__`
+
 ## v3.0.1
 
 **Changes:**

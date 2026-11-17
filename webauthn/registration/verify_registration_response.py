@@ -13,12 +13,16 @@ from webauthn.helpers import (
     parse_registration_credential_json,
 )
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
-from webauthn.helpers.exceptions import InvalidRegistrationResponse
+from webauthn.helpers.exceptions import (
+    InvalidBackupFlags,
+    InvalidRegistrationResponse,
+)
 from webauthn.helpers.structs import (
     AttestationFormat,
     ClientDataType,
     CredentialDeviceType,
     PublicKeyCredentialType,
+    RegistrationFailureCode,
     RegistrationCredential,
     TokenBindingStatus,
 )
@@ -290,7 +294,13 @@ def verify_registration_response(
     if not verified:
         raise InvalidRegistrationResponse("Attestation statement could not be verified")
 
-    parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    try:
+        parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    except InvalidBackupFlags as exc:
+        # Normalize the lower-level backup flag error into the registration failure contract
+        raise InvalidRegistrationResponse(
+            str(exc), RegistrationFailureCode.INVALID_BACKUP_FLAGS
+        ) from exc
 
     return VerifiedRegistration(
         credential_id=attested_credential_data.credential_id,

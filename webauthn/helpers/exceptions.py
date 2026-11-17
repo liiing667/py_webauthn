@@ -1,3 +1,6 @@
+from .structs import AuthenticationFailureCode, RegistrationFailureCode
+
+
 class WebAuthnException(Exception):
     pass
 
@@ -7,7 +10,21 @@ class InvalidRegistrationOptions(WebAuthnException):
 
 
 class InvalidRegistrationResponse(WebAuthnException):
-    pass
+    """A registration response could not be verified
+
+    Attributes:
+        `code`: A stable, machine-readable `RegistrationFailureCode` describing why
+          verification failed. Defaults to `RegistrationFailureCode.MALFORMED_CREDENTIAL`
+          for backwards-compatible callers that construct this exception directly.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: RegistrationFailureCode = RegistrationFailureCode.MALFORMED_CREDENTIAL,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class InvalidAuthenticationOptions(WebAuthnException):
@@ -15,7 +32,21 @@ class InvalidAuthenticationOptions(WebAuthnException):
 
 
 class InvalidAuthenticationResponse(WebAuthnException):
-    pass
+    """An authentication response could not be verified
+
+    Attributes:
+        `code`: A stable, machine-readable `AuthenticationFailureCode` describing why
+          verification failed. Defaults to `AuthenticationFailureCode.MALFORMED_CREDENTIAL`
+          for backwards-compatible callers that construct this exception directly.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: AuthenticationFailureCode = AuthenticationFailureCode.MALFORMED_CREDENTIAL,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class InvalidPublicKeyStructure(WebAuthnException):
