@@ -3,6 +3,12 @@ from datetime import datetime
 from OpenSSL.crypto import X509Store
 
 from webauthn.helpers import base64url_to_bytes
+from webauthn.helpers.known_root_certs import (
+    google_hardware_attestation_root_2,
+    google_hardware_attestation_root_3,
+    google_hardware_attestation_root_4,
+    google_hardware_attestation_root_5,
+)
 from webauthn.helpers.structs import AttestationFormat
 from webauthn import verify_registration_response
 
@@ -54,6 +60,16 @@ class TestVerifyRegistrationResponseAndroidKey(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            # android-key x5c carries its own root, but the shared trust policy still
+            # requires the RP to acknowledge the format's known root certificates
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.ANDROID_KEY: [
+                    google_hardware_attestation_root_2,
+                    google_hardware_attestation_root_3,
+                    google_hardware_attestation_root_4,
+                    google_hardware_attestation_root_5,
+                ],
+            },
         )
 
         assert verification.fmt == AttestationFormat.ANDROID_KEY
@@ -104,6 +120,16 @@ class TestVerifyRegistrationResponseAndroidKey(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            # android-key x5c carries its own root, but the shared trust policy still
+            # requires the RP to acknowledge the format's known root certificates
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.ANDROID_KEY: [
+                    google_hardware_attestation_root_2,
+                    google_hardware_attestation_root_3,
+                    google_hardware_attestation_root_4,
+                    google_hardware_attestation_root_5,
+                ],
+            },
         )
 
         assert verification.fmt == AttestationFormat.ANDROID_KEY

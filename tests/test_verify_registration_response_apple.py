@@ -4,6 +4,7 @@ from datetime import datetime
 from OpenSSL.crypto import X509Store
 
 from webauthn.helpers import base64url_to_bytes
+from webauthn.helpers.known_root_certs import apple_webauthn_root_ca
 from webauthn.helpers.structs import AttestationFormat
 from webauthn import verify_registration_response
 
@@ -43,6 +44,9 @@ class TestVerifyRegistrationResponseApple(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.APPLE: [apple_webauthn_root_ca],
+            },
         )
 
         assert verification.fmt == AttestationFormat.APPLE

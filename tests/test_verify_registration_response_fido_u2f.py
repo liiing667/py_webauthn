@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from webauthn.helpers import base64url_to_bytes
+from webauthn.helpers.known_root_certs import yubico_u2f_root_ca
 from webauthn.helpers.structs import AttestationFormat
 from webauthn import verify_registration_response
 from webauthn.helpers.exceptions import InvalidRegistrationResponse
@@ -29,6 +30,9 @@ class TestVerifyRegistrationResponseFIDOU2F(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.FIDO_U2F: [yubico_u2f_root_ca],
+            },
         )
 
         assert verification.fmt == AttestationFormat.FIDO_U2F
@@ -36,7 +40,9 @@ class TestVerifyRegistrationResponseFIDOU2F(TestCase):
             "lrjqbPdLbWXTJ2sFIreka9aWd2ED-SDx_VAgBAh4XmCJgjCjudEjoi42pGQd-_Bi6nNPQ3T7-xOEgty2I3m7cw"
         )
 
-    def test_verify_attestation_from_fido_conformance(self) -> None:
+    def test_raises_on_fido_conformance_attestation_without_root(self) -> None:
+        # The FIDO conformance test root is not bundled, so this chain cannot be
+        # validated. Fail closed instead of silently accepting the unknown chain.
         credential = """{
             "id": "2i53XtAuBVv2ztu9hdTkG_I4_zc-MhmYOjM2HWDCIlk",
             "rawId": "2i53XtAuBVv2ztu9hdTkG_I4_zc-MhmYOjM2HWDCIlk",
@@ -53,17 +59,44 @@ class TestVerifyRegistrationResponseFIDOU2F(TestCase):
         rp_id = "localhost"
         expected_origin = "http://localhost:5000"
 
-        verification = verify_registration_response(
-            credential=credential,
-            expected_challenge=challenge,
-            expected_origin=expected_origin,
-            expected_rp_id=rp_id,
-        )
+        with self.assertRaisesRegex(
+            InvalidRegistrationResponse, "no root certificates were configured"
+        ):
+            verify_registration_response(
+                credential=credential,
+                expected_challenge=challenge,
+                expected_origin=expected_origin,
+                expected_rp_id=rp_id,
+            )
 
-        assert verification.fmt == AttestationFormat.FIDO_U2F
-        assert verification.credential_id == base64url_to_bytes(
-            "2i53XtAuBVv2ztu9hdTkG_I4_zc-MhmYOjM2HWDCIlk"
+    def test_raises_on_fido_conformance_attestation_with_untrusted_root(self) -> None:
+        # An unrelated root certificate must not be accepted as a chain anchor
+        credential = """{
+            "id": "2i53XtAuBVv2ztu9hdTkG_I4_zc-MhmYOjM2HWDCIlk",
+            "rawId": "2i53XtAuBVv2ztu9hdTkG_I4_zc-MhmYOjM2HWDCIlk",
+            "response": {
+                "clientDataJSON": "eyJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjUwMDAiLCJjaGFsbGVuZ2UiOiJjMFd4b3JXd0VUb094bGJiNU1zRFpQV0tkTmlVaHlPSkw4cy1NSWNqSS1RNVNGSk9ub1dlX3EyWmhnWUtIeWt2NFBHdzNMLV9wbGdOQm5LZ3d3M2RBdyIsInR5cGUiOiJ3ZWJhdXRobi5jcmVhdGUifQ",
+                "attestationObject": "o2NmbXRoZmlkby11MmZnYXR0U3RtdKJjc2lnWEcwRQIgYCbOYmJrEQy_oJqbBpgT_V8DhOUA-Kt3578zKalWyPkCIQDkyAm3YO98SF3AFi5Px1LChUDMLfPzL_p7um8sqxel0GN4NWOBWQQvMIIEKzCCAhOgAwIBAgIBATANBgkqhkiG9w0BAQUFADCBoTEYMBYGA1UEAwwPRklETzIgVEVTVCBST09UMTEwLwYJKoZIhvcNAQkBFiJjb25mb3JtYW5jZS10b29sc0BmaWRvYWxsaWFuY2Uub3JnMRYwFAYDVQQKDA1GSURPIEFsbGlhbmNlMQwwCgYDVQQLDANDV0cxCzAJBgNVBAYTAlVTMQswCQYDVQQIDAJNWTESMBAGA1UEBwwJV2FrZWZpZWxkMB4XDTE4MDMxNjE0MzUyN1oXDTI4MDMxMzE0MzUyN1owgawxIzAhBgNVBAMMGkZJRE8yIEJBVENIIEtFWSBwcmltZTI1NnYxMTEwLwYJKoZIhvcNAQkBFiJjb25mb3JtYW5jZS10b29sc0BmaWRvYWxsaWFuY2Uub3JnMRYwFAYDVQQKDA1GSURPIEFsbGlhbmNlMQwwCgYDVQQLDANDV0cxCzAJBgNVBAYTAlVTMQswCQYDVQQIDAJNWTESMBAGA1UEBwwJV2FrZWZpZWxkMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAETzpeXqtsH7yul_bfZEmWdix773IAQCp2xvIw9lVvF6qZm1l_xL9Qiq-OnvDNAT9aub0nkUvwgEN4y8yxG4m1RqMsMCowCQYDVR0TBAIwADAdBgNVHQ4EFgQUVk33wPjGVbahH2xNGfO_QeL9AXkwDQYJKoZIhvcNAQEFBQADggIBAI-_jI31FB-8J2XxzBXMuI4Yg-vAtq07ABHJqnQpUmt8lpOzmvJ0COKcwtq_7bpsgSVBJ26zhnyWcm1q8V0ZbxUvN2kH8N7nteIGn-CJOJkHDII-IbiH4-TUQCJjuCB52duUWL0fGVw2R13J6V-K7U5r0OWBzmtmwwiRVTggVbjDpbx2oqGAwzupG3RmBFDX1M92s3tgywnLr-e6NZal5yZdS8VblJGjswDZbdY-Qobo2DCN6vxvn5TVkukAHiArjpBBpAmuQfKa52vqSCYRpTCm57fQUZ1c1n29OsvDw1x9ckyH8j_9Xgk0AG-MlQ9Rdg3hCb7LkSPvC_zYDeS2Cj_yFw6OWahnnIRwO6t4UtLuRAkLrjP1T7nk0zu1whwj7YEwtva45niWWh6rdyg_SZlfsph3o_MZN5DwKaSrUaEO6b-numELH5GWjjiPgfgPKkIof-D40xaKUFBpNJzorQkAZCJWuHvXRpBZWFVh_UhNlGhX0mhz2yFlBrujYa9BgvIkdJ8Keok6qfAn-r5EEFXcSI8vGY7OEF01QKXVpu8-FW0uSxtQ991AcFD6KjvR51l7e61visUgduhZRIq9bYzeCIxnK5Jhm3o_NJE2bOp2NmVwVe4kjuJX87wo3Ba41bXgwIpdiLWyWJhSHPmJI_1ibRTZ5XO92xbPPSnnkXrFaGF1dGhEYXRhWKRJlg3liA6MaHQ0Fw9kdmBbj-SuuaKGMseZXPO6gx2XY0EAAAACAAAAAAAAAAAAAAAAAAAAAAAg2i53XtAuBVv2ztu9hdTkG_I4_zc-MhmYOjM2HWDCIlmlAQIDJiABIVggFgD81bv3uFCOrjw3DfHTIuscQkA7gikvjGdE6ltNPjoiWCA_7nP-fPzwp30E4kLjh4nyMyHQ2tfPJR8lA0h7SQ1dfA"
+            },
+            "type": "public-key",
+            "transports": null
+        }"""
+        challenge = base64url_to_bytes(
+            "c0WxorWwEToOxlbb5MsDZPWKdNiUhyOJL8s-MIcjI-Q5SFJOnoWe_q2ZhgYKHykv4PGw3L-_plgNBnKgww3dAw"
         )
+        rp_id = "localhost"
+        expected_origin = "http://localhost:5000"
+
+        with self.assertRaises(InvalidRegistrationResponse):
+            verify_registration_response(
+                credential=credential,
+                expected_challenge=challenge,
+                expected_origin=expected_origin,
+                expected_rp_id=rp_id,
+                pem_root_certs_bytes_by_fmt={
+                    AttestationFormat.FIDO_U2F: [yubico_u2f_root_ca],
+                },
+            )
 
     def test_verify_attestation_with_unsupported_token_binding_status(self) -> None:
         # Credential contains `clientDataJSON: { tokenBinding: { status: "not-supported" } }`
@@ -90,6 +123,9 @@ class TestVerifyRegistrationResponseFIDOU2F(TestCase):
                 expected_challenge=challenge,
                 expected_origin=expected_origin,
                 expected_rp_id=rp_id,
+                pem_root_certs_bytes_by_fmt={
+                    AttestationFormat.FIDO_U2F: [yubico_u2f_root_ca],
+                },
             )
 
     def test_verify_attestation_with_unsupported_token_binding(self) -> None:
@@ -114,6 +150,9 @@ class TestVerifyRegistrationResponseFIDOU2F(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.FIDO_U2F: [yubico_u2f_root_ca],
+            },
         )
 
         assert verification.fmt == AttestationFormat.FIDO_U2F

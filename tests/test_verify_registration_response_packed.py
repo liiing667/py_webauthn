@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from webauthn.helpers import base64url_to_bytes
+from webauthn.helpers.known_root_certs import yubico_u2f_root_ca
 from webauthn.helpers.structs import AttestationFormat
 from webauthn import verify_registration_response
 
@@ -32,6 +33,9 @@ class TestVerifyRegistrationResponsePacked(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.PACKED: [yubico_u2f_root_ca],
+            },
         )
 
         assert verification.fmt == AttestationFormat.PACKED
@@ -64,6 +68,9 @@ class TestVerifyRegistrationResponsePacked(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.PACKED: [yubico_u2f_root_ca],
+            },
         )
 
         assert verification.fmt == AttestationFormat.PACKED

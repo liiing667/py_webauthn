@@ -28,6 +28,11 @@ from .formats.apple import verify_apple
 from .formats.fido_u2f import verify_fido_u2f
 from .formats.packed import verify_packed
 from .formats.tpm import verify_tpm
+from .attestation_trust import (
+    enforce_attestation_trust_policy,
+    get_attestation_trust_policy,
+    root_certs_for_format,
+)
 from .generate_registration_options import default_supported_pub_key_algs
 
 
@@ -210,12 +215,10 @@ def verify_registration_response(
         raise InvalidRegistrationResponse("malformed attestation type")
 
     # Prepare a list of possible root certificates for certificate chain validation
-    pem_root_certs_bytes: List[bytes] = []
-    if pem_root_certs_bytes_by_fmt:
-        custom_certs = pem_root_certs_bytes_by_fmt.get(attestation_object.fmt)
-        if custom_certs:
-            # Load any provided custom root certs
-            pem_root_certs_bytes.extend(custom_certs)
+    pem_root_certs_bytes: List[bytes] = root_certs_for_format(
+        attestation_object.fmt,
+        pem_root_certs_bytes_by_fmt,
+    )
 
     if attestation_object.fmt == AttestationFormat.NONE:
         # A "none" attestation should not contain _anything_ in its attestation statement
@@ -230,7 +233,20 @@ def verify_registration_response(
 
         # There's nothing else to verify, so mark the verification successful
         verified = True
-    elif attestation_object.fmt == AttestationFormat.FIDO_U2F:
+    else:
+        # Resolve the shared trust policy first so that an unsupported attestation
+        # format is rejected before any chain or signature handling. Every non-"none"
+        # format then goes through the same fail-closed trust decision so that a later
+        # field check can never override a failed chain or AAGUID check.
+        trust_policy = get_attestation_trust_policy(attestation_object.fmt)
+        enforce_attestation_trust_policy(
+            policy=trust_policy,
+            attestation_statement=attestation_object.att_stmt,
+            aaguid=attested_credential_data.aaguid,
+            pem_root_certs_bytes=pem_root_certs_bytes,
+        )
+
+    if attestation_object.fmt == AttestationFormat.FIDO_U2F:
         verified = verify_fido_u2f(
             attestation_statement=attestation_object.att_stmt,
             client_data_json=client_data_bytes,
@@ -278,11 +294,6 @@ def verify_registration_response(
             client_data_json=client_data_bytes,
             credential_public_key=attested_credential_data.credential_public_key,
             pem_root_certs_bytes=pem_root_certs_bytes,
-        )
-    else:
-        # Raise exception on an attestation format we're not prepared to verify
-        raise InvalidRegistrationResponse(
-            f'Unsupported attestation type "{attestation_object.fmt}"'
         )
 
     # If we got this far and still couldn't verify things then raise an error instead

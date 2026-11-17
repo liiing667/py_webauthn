@@ -25,11 +25,16 @@ def validate_certificate_chain(
         root certificates that may complete the certificate chain
 
     Raises:
-        `helpers.exceptions.InvalidCertificateChain` if chain cannot be validated
+        `helpers.exceptions.InvalidCertificateChain` if chain cannot be validated,
+        including when no root certificates were provided to validate an x5c chain
     """
     if pem_root_certs_bytes is None or len(pem_root_certs_bytes) < 1:
-        # We have no root certs to chain back to, so just pass on validation
-        return True
+        # Fail closed: an attestation statement that presents an x5c chain cannot be
+        # trusted without a root certificate to chain back to. Silently skipping this
+        # check would let any self-signed attestation certificate pass verification.
+        raise InvalidCertificateChain(
+            "No root certificates were provided to validate the certificate chain"
+        )
 
     # Make sure we have at least one certificate to try and link back to a root cert
     if len(x5c) < 1:

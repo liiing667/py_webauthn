@@ -1,17 +1,32 @@
+from datetime import datetime
 from unittest import TestCase
 
+from OpenSSL.crypto import X509Store
+
 from webauthn.helpers import base64url_to_bytes
+from webauthn.helpers.known_root_certs import (
+    microsoft_tpm_root_certificate_authority_2014,
+)
 from webauthn.helpers.structs import AttestationFormat
 from webauthn import verify_registration_response
 
+from .helpers.x509store import patch_validate_certificate_chain_x509store_getter
+
 
 class TestVerifyRegistrationResponseTPM(TestCase):
-    def test_verify_attestation_surface_pro_4(self) -> None:
+    @patch_validate_certificate_chain_x509store_getter
+    def test_verify_attestation_surface_pro_4(
+        self,
+        patched_x509store: X509Store,
+    ) -> None:
         """
         TPM Mfgr: INTC (Intel)
         Mfgr Version: 500.5.0.0
         TPM Version: 2.0
         """
+        # TPM attestation certs in these static responses have since expired, so pin the
+        # X.509 validation clock to a date within their validity windows
+        patched_x509store.set_time(datetime(2021, 9, 1, 0, 0, 0))
         credential = """{
             "id": "2O_TSbHXS3KJwx5uwajcqbKwWCBeHjOBCXXb7vrPfUU",
             "rawId": "2O_TSbHXS3KJwx5uwajcqbKwWCBeHjOBCXXb7vrPfUU",
@@ -32,6 +47,11 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.TPM: [
+                    microsoft_tpm_root_certificate_authority_2014,
+                ],
+            },
         )
 
         assert verification.fmt == AttestationFormat.TPM
@@ -39,12 +59,17 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             "2O_TSbHXS3KJwx5uwajcqbKwWCBeHjOBCXXb7vrPfUU"
         )
 
-    def test_verify_attestation_dell_xps_13(self) -> None:
+    @patch_validate_certificate_chain_x509store_getter
+    def test_verify_attestation_dell_xps_13(
+        self,
+        patched_x509store: X509Store,
+    ) -> None:
         """
         TPM Mfgr: NTC (Nuvoton Technology)
         Mfgr Version: 1.3.2.8
         TPM Version: 2.0
         """
+        patched_x509store.set_time(datetime(2021, 9, 1, 0, 0, 0))
         credential = """{
             "id": "56iW7RC7YLiknnNU70kO5Bb-jip9-WTUbohh_Aqq1q4",
             "rawId": "56iW7RC7YLiknnNU70kO5Bb-jip9-WTUbohh_Aqq1q4",
@@ -65,6 +90,11 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.TPM: [
+                    microsoft_tpm_root_certificate_authority_2014,
+                ],
+            },
         )
 
         assert verification.fmt == AttestationFormat.TPM
@@ -72,12 +102,17 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             "56iW7RC7YLiknnNU70kO5Bb-jip9-WTUbohh_Aqq1q4"
         )
 
-    def test_verify_attestation_lenovo_carbon_x1(self) -> None:
+    @patch_validate_certificate_chain_x509store_getter
+    def test_verify_attestation_lenovo_carbon_x1(
+        self,
+        patched_x509store: X509Store,
+    ) -> None:
         """
         TPM Mfgr: STM (ST Microelectronics)
         Mfgr Version: 73.8.17568.5511
         TPM Version: 2.0
         """
+        patched_x509store.set_time(datetime(2021, 9, 1, 0, 0, 0))
         credential = """{
             "id": "kU6oEC95fTXAtpI6b2w69fQrKGntFFt1l_2ySjmndYM",
             "rawId": "kU6oEC95fTXAtpI6b2w69fQrKGntFFt1l_2ySjmndYM",
@@ -98,6 +133,11 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.TPM: [
+                    microsoft_tpm_root_certificate_authority_2014,
+                ],
+            },
         )
 
         assert verification.fmt == AttestationFormat.TPM
@@ -105,7 +145,12 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             "kU6oEC95fTXAtpI6b2w69fQrKGntFFt1l_2ySjmndYM"
         )
 
-    def test_verify_tpm_with_ecc_public_area_type(self) -> None:
+    @patch_validate_certificate_chain_x509store_getter
+    def test_verify_tpm_with_ecc_public_area_type(
+        self,
+        patched_x509store: X509Store,
+    ) -> None:
+        patched_x509store.set_time(datetime(2022, 2, 1, 0, 0, 0))
         credential = """{
             "id": "hsS2ywFz_LWf9-lC35vC9uJTVD3ZCVdweZvESUbjXnQ",
             "rawId": "hsS2ywFz_LWf9-lC35vC9uJTVD3ZCVdweZvESUbjXnQ",
@@ -124,6 +169,11 @@ class TestVerifyRegistrationResponseTPM(TestCase):
             expected_challenge=challenge,
             expected_origin=expected_origin,
             expected_rp_id=rp_id,
+            pem_root_certs_bytes_by_fmt={
+                AttestationFormat.TPM: [
+                    microsoft_tpm_root_certificate_authority_2014,
+                ],
+            },
         )
 
         assert verification.fmt == AttestationFormat.TPM

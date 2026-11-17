@@ -60,24 +60,20 @@ class TestValidateCertificateChain(TestCase):
                 pem_root_certs_bytes=[globalsign_root_ca],
             )
 
-    def test_passes_on_no_root_certs(self):
-        try:
+    def test_raises_on_no_root_certs(self):
+        # Fail closed: an x5c chain without a root to validate against cannot be trusted
+        with self.assertRaises(InvalidCertificateChain):
             validate_certificate_chain(
                 x5c=apple_x5c_certs,
             )
-        except Exception as err:
-            print(err)
-            self.fail("validate_certificate_chain failed when it should have succeeded")
 
-    def test_passes_on_empty_root_certs_array(self):
-        try:
+    def test_raises_on_empty_root_certs_array(self):
+        # Fail closed: an explicitly empty root list must not skip chain validation
+        with self.assertRaises(InvalidCertificateChain):
             validate_certificate_chain(
                 x5c=apple_x5c_certs,
                 pem_root_certs_bytes=[],
             )
-        except Exception as err:
-            print(err)
-            self.fail("validate_certificate_chain failed when it should have succeeded")
 
     def test_includes_original_exception_when_raising(self):
         """
@@ -87,9 +83,7 @@ class TestValidateCertificateChain(TestCase):
         """
         custom_exception = X509StoreContextError(message="Oops", certificate=X509(), errors=[])
 
-        with patch(
-            "OpenSSL.crypto.X509StoreContext.verify_certificate", side_effect=custom_exception
-        ):
+        with patch("OpenSSL.crypto.X509StoreContext.verify_certificate", side_effect=custom_exception):
             with self.assertRaises(InvalidCertificateChain) as ctx:
                 validate_certificate_chain(
                     x5c=apple_x5c_certs,

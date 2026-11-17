@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+**Security fixes:**
+
+- Attestation certificate chain validation now fails closed: an x5c-bearing attestation statement is rejected when no root certificates are configured (or when the chain does not validate to a configured root), instead of being silently accepted. This prevents self-signed attestation certificates from being trusted during registration
+- All attestation statement formats now share a single trust decision (`webauthn.registration.attestation_trust`) that combines root certificate, AAGUID, and RP ID policy before any format-specific parsing, so a failed chain check can no longer be overridden by later field checks
+- `"none"` attestation and packed self (direct) attestation remain explicitly supported without root certificates
+
 ## v3.0.1
 
 **Changes:**
