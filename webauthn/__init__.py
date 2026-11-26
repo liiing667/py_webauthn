@@ -6,7 +6,19 @@ from .authentication.generate_authentication_options import (
 from .authentication.verify_authentication_response import (
     verify_authentication_response,
 )
-from .helpers import base64url_to_bytes, options_to_json
+from .helpers import (
+    ChallengeLedger,
+    DeviceIdentity,
+    DeviceIdentityAudit,
+    DeviceIdentityMismatchError,
+    DeviceIdentityRecord,
+    DeviceIdentityRegistry,
+    DeviceProvenance,
+    IdentityConsistencyStatus,
+    base64url_to_bytes,
+    compare_device_identity,
+    options_to_json,
+)
 
 __version__ = "3.0.1"
 
@@ -17,4 +29,13 @@ __all__ = [
     "verify_authentication_response",
     "base64url_to_bytes",
     "options_to_json",
+    "ChallengeLedger",
+    "DeviceIdentity",
+    "DeviceIdentityAudit",
+    "DeviceIdentityMismatchError",
+    "DeviceIdentityRecord",
+    "DeviceIdentityRegistry",
+    "DeviceProvenance",
+    "IdentityConsistencyStatus",
+    "compare_device_identity",
 ]

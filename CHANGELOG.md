@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+**Changes:**
+
+- Registration and authentication results now include a stable `device_identity` (`credential_id`, pinned public-key fingerprint, RP ID, and correlation digest), allowing Relying Parties to prove that login and account-recovery events refer to the same registered device credential
+- New `webauthn.helpers.device_identity` helpers provide recovery/migration reconciliation and an auditable account-to-device registry; legitimate single-device to multi-device/passkey recovery changes are recorded while credential-ID, RP-ID, or public-key substitutions are rejected as identity mismatches
+- New `ChallengeLedger` provides optional thread-safe, expiring, account/session-scoped one-time challenge consumption. `verify_registration_response()` and `verify_authentication_response()` accept `challenge_ledger` and `challenge_scope`, making repeated or cross-account challenge use fail with stable failure codes
+- `android-key` root trust comparison now uses certificate fingerprints in addition to exact PEM equality and no longer mutates the caller-provided root-certificate list
+- Verification exceptions and authentication results include stable audit codes/sign-count/backup-state transitions compatible with the existing response fields
+
 ## v3.0.1
 
 **Changes:**

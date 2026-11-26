@@ -4,7 +4,6 @@ from typing import List, Literal, Optional
 
 from .cose import COSEAlgorithmIdentifier
 
-
 ################
 #
 # Fundamental data structures
@@ -247,7 +246,9 @@ class PublicKeyCredentialDescriptor:
     """
 
     id: bytes
-    type: Literal[PublicKeyCredentialType.PUBLIC_KEY] = PublicKeyCredentialType.PUBLIC_KEY
+    type: Literal[PublicKeyCredentialType.PUBLIC_KEY] = (
+        PublicKeyCredentialType.PUBLIC_KEY
+    )
     transports: Optional[List[AuthenticatorTransport]] = None
 
 
@@ -364,7 +365,9 @@ class RegistrationCredential:
     raw_id: bytes
     response: AuthenticatorAttestationResponse
     authenticator_attachment: Optional[AuthenticatorAttachment] = None
-    type: Literal[PublicKeyCredentialType.PUBLIC_KEY] = PublicKeyCredentialType.PUBLIC_KEY
+    type: Literal[PublicKeyCredentialType.PUBLIC_KEY] = (
+        PublicKeyCredentialType.PUBLIC_KEY
+    )
 
 
 @dataclass
@@ -532,7 +535,9 @@ class AuthenticationCredential:
     raw_id: bytes
     response: AuthenticatorAssertionResponse
     authenticator_attachment: Optional[AuthenticatorAttachment] = None
-    type: Literal[PublicKeyCredentialType.PUBLIC_KEY] = PublicKeyCredentialType.PUBLIC_KEY
+    type: Literal[PublicKeyCredentialType.PUBLIC_KEY] = (
+        PublicKeyCredentialType.PUBLIC_KEY
+    )
 
 
 ################
@@ -554,3 +559,166 @@ class CredentialDeviceType(str, Enum):
 
     SINGLE_DEVICE = "single_device"
     MULTI_DEVICE = "multi_device"
+
+
+class AuthenticationFailureCode(str, Enum):
+    """Stable, machine-readable classification of why authentication failed
+
+    Members are intended to be relied upon by Relying Parties (e.g. in audit
+    logs or branching logic) instead of matching against error message strings.
+
+    Members:
+        `MALFORMED_CREDENTIAL`: The credential or one of its responses could not be parsed
+        `BAD_CREDENTIAL_ID`: The credential's `id` and `raw_id` were not equivalent
+        `BAD_CREDENTIAL_TYPE`: The credential's `type` was not `"public-key"`
+        `BAD_CLIENT_DATA_TYPE`: `clientDataJSON` did not describe a `webauthn.get` ceremony
+        `BAD_CHALLENGE`: The challenge in `clientDataJSON` did not match the expected challenge
+        `CHALLENGE_REPLAYED`: The one-time challenge had already been consumed
+        `CHALLENGE_SCOPE_MISMATCH`: The challenge was bound to another account/session
+        `BAD_ORIGIN`: The origin in `clientDataJSON` was not among the expected origins
+        `BAD_TOKEN_BINDING`: The token binding status in `clientDataJSON` was not supported
+        `BAD_RP_ID`: The RP ID hash in `authenticatorData` did not match the expected RP ID
+        `USER_NOT_PRESENT`: The authenticator did not set the user present flag
+        `USER_NOT_VERIFIED`: User verification was required but the authenticator did not set it
+        `SIGN_COUNT_ROLLED_BACK`: The signature counter did not advance over the stored counter
+        `INVALID_SIGNATURE`: The assertion signature could not be verified
+        `INVALID_BACKUP_FLAGS`: The backup eligibility and backup state flags were contradictory
+        `DEVICE_TYPE_MISMATCH`: The credential's device type did not match the stored record
+        `BACKUP_STATE_MISMATCH`: The credential's backup state did not match the stored record
+        `DEVICE_IDENTITY_MISMATCH`: The credential/key did not match the stored device identity
+    """
+
+    MALFORMED_CREDENTIAL = "malformed_credential"
+    BAD_CREDENTIAL_ID = "bad_credential_id"
+    BAD_CREDENTIAL_TYPE = "bad_credential_type"
+    BAD_CLIENT_DATA_TYPE = "bad_client_data_type"
+    BAD_CHALLENGE = "bad_challenge"
+    CHALLENGE_REPLAYED = "challenge_replayed"
+    CHALLENGE_SCOPE_MISMATCH = "challenge_scope_mismatch"
+    BAD_ORIGIN = "bad_origin"
+    BAD_TOKEN_BINDING = "bad_token_binding"
+    BAD_RP_ID = "bad_rp_id"
+    USER_NOT_PRESENT = "user_not_present"
+    USER_NOT_VERIFIED = "user_not_verified"
+    SIGN_COUNT_ROLLED_BACK = "sign_count_rolled_back"
+    INVALID_SIGNATURE = "invalid_signature"
+    INVALID_BACKUP_FLAGS = "invalid_backup_flags"
+    DEVICE_TYPE_MISMATCH = "device_type_mismatch"
+    BACKUP_STATE_MISMATCH = "backup_state_mismatch"
+    DEVICE_IDENTITY_MISMATCH = "device_identity_mismatch"
+
+
+class SignCountStatus(str, Enum):
+    """Auditable interpretation of a credential's signature counter after authentication
+
+    Members:
+        `INCREMENTED`: The new counter value is greater than the stored value, the
+          expected behavior for authenticators that maintain signature counters
+        `NOT_SUPPORTED`: Both the stored and reported counter values are zero, which is
+          typical of synced passkeys and other authenticators that do not maintain counters
+        `ROLLED_BACK`: The reported counter value did not advance over the stored value;
+          authentication is rejected because this can indicate a cloned credential or replay
+    """
+
+    INCREMENTED = "incremented"
+    NOT_SUPPORTED = "not_supported"
+    ROLLED_BACK = "rolled_back"
+
+
+class RegistrationFailureCode(str, Enum):
+    """Stable, machine-readable classification of why registration failed
+
+    Members:
+        `MALFORMED_CREDENTIAL`: The registration response could not be parsed or verified
+          for a reason without a more specific classification
+        `BAD_CHALLENGE`: The challenge did not match or could not be consumed once
+        `INVALID_BACKUP_FLAGS`: The backup eligibility and backup state flags were contradictory
+        `UNKNOWN_ATTESTATION_ROOT`: The x5c root was not trusted for the attestation format
+        `DEVICE_IDENTITY_MISMATCH`: The registration did not match the expected device identity
+    """
+
+    MALFORMED_CREDENTIAL = "malformed_credential"
+    BAD_CHALLENGE = "bad_challenge"
+    CHALLENGE_REPLAYED = "challenge_replayed"
+    CHALLENGE_SCOPE_MISMATCH = "challenge_scope_mismatch"
+    INVALID_BACKUP_FLAGS = "invalid_backup_flags"
+    UNKNOWN_ATTESTATION_ROOT = "unknown_attestation_root"
+    DEVICE_IDENTITY_MISMATCH = "device_identity_mismatch"
+
+
+class BackupStateChange(str, Enum):
+    """Auditable comparison of backup-related flags against the stored credential record
+
+    Members:
+        `UNCHANGED`: Both device type and backup state match the stored record
+        `BACKUP_STATE_CHANGED`: The backup state (BS flag) changed while the device type
+          (BE flag) stayed the same. A transition from not-backed-up to backed-up is a
+          legitimate state change; the reverse is rejected as a backup state mismatch
+        `DEVICE_TYPE_CHANGED`: The device type (BE flag) changed. A migration from
+          single-device to multi-device is legitimate; the reverse is rejected as a
+          device type mismatch
+    """
+
+    UNCHANGED = "unchanged"
+    BACKUP_STATE_CHANGED = "backup_state_changed"
+    DEVICE_TYPE_CHANGED = "device_type_changed"
+
+
+@dataclass
+class SignCountAudit:
+    """Auditable details about the signature counter observed during authentication
+
+    Attributes:
+        `status`: Interpretation of the reported counter relative to the stored counter
+        `previous_sign_count`: The counter value previously stored by the Relying Party
+        `new_sign_count`: The counter value reported by the authenticator in this response
+        `rolled_back`: Whether the counter failed to advance while a counter is in use
+    """
+
+    status: SignCountStatus
+    previous_sign_count: int
+    new_sign_count: int
+    rolled_back: bool
+
+
+@dataclass
+class BackupStateAudit:
+    """Auditable details about backup flag changes observed during authentication
+
+    Attributes:
+        `change`: How the reported backup flags compare to the stored credential record
+        `previous_device_type`: The device type stored for the credential, if one was provided
+        `new_device_type`: The device type derived from the response's backup eligibility flag
+        `previous_backed_up`: The backup state stored for the credential, if one was provided
+        `new_backed_up`: The backup state derived from the response's backup state flag
+        `credential_migrated`: Whether the credential migrated from single-device to multi-device
+    """
+
+    change: BackupStateChange
+    previous_device_type: Optional[CredentialDeviceType]
+    new_device_type: CredentialDeviceType
+    previous_backed_up: Optional[bool]
+    new_backed_up: bool
+    credential_migrated: bool
+
+
+_LAZY_DEVICE_IDENTITY_NAMES = {
+    "DeviceIdentity",
+    "DeviceIdentityAudit",
+    "DeviceIdentityRecord",
+    "DeviceIdentityRegistry",
+    "DeviceIdentityReport",
+    "DeviceProvenance",
+    "DeviceIdentityStore",
+    "DeviceRegistry",
+    "IdentityConsistencyStatus",
+}
+
+
+def __getattr__(name: str):
+    """Lazily expose device identity contracts from the structs namespace."""
+    if name in _LAZY_DEVICE_IDENTITY_NAMES:
+        from . import device_identity
+
+        return getattr(device_identity, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

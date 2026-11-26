@@ -2,8 +2,37 @@ from .aaguid_to_string import aaguid_to_string
 from .base64url_to_bytes import base64url_to_bytes
 from .bytes_to_base64url import bytes_to_base64url
 from .byteslike_to_bytes import byteslike_to_bytes
+from .challenge_ledger import (
+    ChallengeLedger,
+    ChallengeLedgerError,
+    ChallengeReplayedError,
+    ChallengeScopeMismatchError,
+    UnknownChallengeError,
+    consume_challenge,
+)
 from .decode_credential_public_key import decode_credential_public_key
 from .decoded_public_key_to_cryptography import decoded_public_key_to_cryptography
+from .device_identity import (
+    DeviceAudit,
+    DeviceIdentity,
+    DeviceIdentityAudit,
+    DeviceIdentityMismatchError,
+    DeviceIdentityRecord,
+    DeviceIdentityRegistry,
+    DeviceIdentityReport,
+    DeviceProvenance,
+    DeviceSource,
+    DeviceOrigin,
+    DeviceRegistry,
+    DeviceIdentityStore,
+    IdentityConsistencyStatus,
+    attestation_provenance_from_registration,
+    assert_device_identity,
+    build_provenance,
+    compare_device_identity,
+    recover_device_identity,
+    verify_device_identity,
+)
 from .encode_cbor import encode_cbor
 from .generate_challenge import generate_challenge
 from .generate_user_handle import generate_user_handle
@@ -28,8 +57,33 @@ __all__ = [
     "base64url_to_bytes",
     "bytes_to_base64url",
     "byteslike_to_bytes",
+    "ChallengeLedger",
+    "ChallengeLedgerError",
+    "ChallengeReplayedError",
+    "ChallengeScopeMismatchError",
+    "UnknownChallengeError",
+    "consume_challenge",
     "decode_credential_public_key",
     "decoded_public_key_to_cryptography",
+    "DeviceIdentity",
+    "DeviceIdentityAudit",
+    "DeviceAudit",
+    "DeviceIdentityMismatchError",
+    "DeviceIdentityRecord",
+    "DeviceIdentityRegistry",
+    "DeviceIdentityReport",
+    "DeviceProvenance",
+    "DeviceSource",
+    "DeviceOrigin",
+    "DeviceRegistry",
+    "DeviceIdentityStore",
+    "IdentityConsistencyStatus",
+    "attestation_provenance_from_registration",
+    "assert_device_identity",
+    "build_provenance",
+    "compare_device_identity",
+    "recover_device_identity",
+    "verify_device_identity",
     "encode_cbor",
     "generate_challenge",
     "generate_user_handle",

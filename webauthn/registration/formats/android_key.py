@@ -1,5 +1,6 @@
+import base64
 import hashlib
-from typing import List, cast
+from typing import List, Optional, cast
 
 from pyasn1.type.univ import OctetString
 from pyasn1.codec.ber.decoder import decode as ber_decode
@@ -39,6 +40,51 @@ from webauthn.helpers.known_root_certs import (
     google_hardware_attestation_root_5,
 )
 from webauthn.helpers.structs import AttestationStatement
+from webauthn.helpers.structs import RegistrationFailureCode
+
+ANDROID_KEY_KNOWN_ROOT_PEMS = (
+    google_hardware_attestation_root_2,
+    google_hardware_attestation_root_3,
+    google_hardware_attestation_root_4,
+    google_hardware_attestation_root_5,
+)
+
+
+def _pem_cert_sha256(pem_cert: bytes) -> str:
+    """Return the certificate fingerprint without relying on pyOpenSSL version APIs."""
+    pem_lines = [
+        line.strip()
+        for line in pem_cert.splitlines()
+        if line.strip() and not line.strip().startswith(b"-----")
+    ]
+    der_cert = base64.b64decode(b"".join(pem_lines))
+    return hashlib.sha256(der_cert).hexdigest()
+
+
+def is_known_android_key_root(
+    pem_root_cert: bytes,
+    additional_pem_root_certs: Optional[List[bytes]] = None,
+) -> bool:
+    """Return whether an Android Key x5c root is a Google or RP-trusted root."""
+
+    try:
+        target_fingerprint = _pem_cert_sha256(pem_root_cert)
+    except Exception:
+        return False
+
+    trusted_pems = [
+        *ANDROID_KEY_KNOWN_ROOT_PEMS,
+        *(additional_pem_root_certs or []),
+    ]
+    for trusted_pem in trusted_pems:
+        try:
+            if _pem_cert_sha256(trusted_pem) == target_fingerprint:
+                return True
+        except Exception:
+            # Byte-equality remains a fallback below for callers with unusual PEM wrappers.
+            continue
+
+    return pem_root_cert in (additional_pem_root_certs or [])
 
 
 def verify_android_key(
@@ -66,7 +112,9 @@ def verify_android_key(
         )
 
     if not attestation_statement.x5c:
-        raise InvalidRegistrationResponse("Attestation statement was missing x5c (Android Key)")
+        raise InvalidRegistrationResponse(
+            "Attestation statement was missing x5c (Android Key)"
+        )
 
     # x5c includes a root certificate, so break it up accordingly
     x5c_no_root = attestation_statement.x5c[:-1]
@@ -89,15 +137,15 @@ def verify_android_key(
     except InvalidCertificateChain as err:
         raise InvalidRegistrationResponse(f"{err} (Android Key)")
 
-    # Make sure the root cert is one of these:
-    pem_root_certs_bytes.append(google_hardware_attestation_root_2)
-    pem_root_certs_bytes.append(google_hardware_attestation_root_3)
-    pem_root_certs_bytes.append(google_hardware_attestation_root_4)
-    pem_root_certs_bytes.append(google_hardware_attestation_root_5)
-
-    if x5c_root_cert_pem not in pem_root_certs_bytes:
+    # Require the x5c root to chain to a known Google root or an explicitly configured
+    # RP root.  Do not append to/mutate the caller's list of custom roots.
+    if not is_known_android_key_root(
+        x5c_root_cert_pem,
+        additional_pem_root_certs=pem_root_certs_bytes,
+    ):
         raise InvalidRegistrationResponse(
-            "x5c root certificate was not a known root certificate (Android Key)"
+            "x5c root certificate was not a known root certificate (Android Key)",
+            RegistrationFailureCode.UNKNOWN_ATTESTATION_ROOT,
         )
 
     # Extract attStmt bytes from attestation_object
@@ -163,7 +211,9 @@ def verify_android_key(
             "Certificate public key did not match credential public key (Android Key)"
         )
 
-    attestation_cert_pyasn1, _ = ber_decode(attestation_cert_bytes, asn1Spec=Certificate())
+    attestation_cert_pyasn1, _ = ber_decode(
+        attestation_cert_bytes, asn1Spec=Certificate()
+    )
     attestation_cert_exts = attestation_cert_pyasn1["tbsCertificate"]["extensions"]
 
     # Verify that the attestationChallenge field in the attestation certificate

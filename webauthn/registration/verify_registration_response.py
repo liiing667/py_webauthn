@@ -13,12 +13,27 @@ from webauthn.helpers import (
     parse_registration_credential_json,
 )
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
-from webauthn.helpers.exceptions import InvalidRegistrationResponse
+from webauthn.helpers.exceptions import (
+    InvalidBackupFlags,
+    InvalidRegistrationResponse,
+)
+from webauthn.helpers.challenge_ledger import (
+    ChallengeLedgerError,
+    ChallengeReplayedError,
+    ChallengeScopeMismatchError,
+    consume_challenge,
+)
+from webauthn.helpers.device_identity import (
+    DeviceIdentity,
+    DeviceProvenance,
+    attestation_provenance_from_registration,
+)
 from webauthn.helpers.structs import (
     AttestationFormat,
     ClientDataType,
     CredentialDeviceType,
     PublicKeyCredentialType,
+    RegistrationFailureCode,
     RegistrationCredential,
     TokenBindingStatus,
 )
@@ -44,6 +59,8 @@ class VerifiedRegistration:
         `credential_type`: The literal string "public-key"
         `user_verified`: Whether the user was verified by the authenticator
         `attestation_object`: The raw attestation object for later scrutiny
+        `device_identity`: Stable credential/key identity used across login and recovery
+        `device_provenance`: Audit-friendly attestation source and trust-anchor details
     """
 
     credential_id: bytes
@@ -56,6 +73,8 @@ class VerifiedRegistration:
     attestation_object: bytes
     credential_device_type: CredentialDeviceType
     credential_backed_up: bool
+    device_identity: Optional[DeviceIdentity] = None
+    device_provenance: Optional[DeviceProvenance] = None
 
 
 expected_token_binding_statuses = [
@@ -72,8 +91,14 @@ def verify_registration_response(
     expected_origin: Union[str, List[str]],
     require_user_presence: bool = True,
     require_user_verification: bool = False,
-    supported_pub_key_algs: List[COSEAlgorithmIdentifier] = default_supported_pub_key_algs,
-    pem_root_certs_bytes_by_fmt: Optional[Mapping[AttestationFormat, List[bytes]]] = None,
+    supported_pub_key_algs: List[
+        COSEAlgorithmIdentifier
+    ] = default_supported_pub_key_algs,
+    pem_root_certs_bytes_by_fmt: Optional[
+        Mapping[AttestationFormat, List[bytes]]
+    ] = None,
+    challenge_ledger: Any = None,
+    challenge_scope: Optional[Union[str, bytes]] = None,
 ) -> VerifiedRegistration:
     """Verify an authenticator's response to navigator.credentials.create()
 
@@ -94,6 +119,9 @@ def verify_registration_response(
           restrict support to. Defaults to all supported algorithm IDs.
         - (optional) `pem_root_certs_bytes_by_fmt`: A list of root certificates, in PEM format, to
           be used to validate the certificate chains for specific attestation statement formats.
+        - (optional) `challenge_ledger`: A one-time challenge registry. When supplied, the expected
+          challenge is atomically consumed and replay attempts are rejected.
+        - (optional) `challenge_scope`: Account/session scope enforced by `challenge_ledger`.
 
     Returns:
         Information about the authenticator and registration
@@ -134,7 +162,33 @@ def verify_registration_response(
         )
 
     if expected_challenge != client_data.challenge:
-        raise InvalidRegistrationResponse("Client data challenge was not expected challenge")
+        raise InvalidRegistrationResponse(
+            "Client data challenge was not expected challenge",
+            RegistrationFailureCode.BAD_CHALLENGE,
+        )
+
+    if challenge_ledger is not None:
+        try:
+            consume_challenge(
+                challenge_ledger,
+                expected_challenge,
+                scope=challenge_scope,
+            )
+        except ChallengeScopeMismatchError as exc:
+            raise InvalidRegistrationResponse(
+                str(exc),
+                RegistrationFailureCode.CHALLENGE_SCOPE_MISMATCH,
+            ) from exc
+        except ChallengeReplayedError as exc:
+            raise InvalidRegistrationResponse(
+                str(exc),
+                RegistrationFailureCode.CHALLENGE_REPLAYED,
+            ) from exc
+        except ChallengeLedgerError as exc:
+            raise InvalidRegistrationResponse(
+                str(exc),
+                RegistrationFailureCode.BAD_CHALLENGE,
+            ) from exc
 
     if isinstance(expected_origin, str):
         if expected_origin != client_data.origin:
@@ -184,15 +238,21 @@ def verify_registration_response(
         )
 
     if not auth_data.attested_credential_data:
-        raise InvalidRegistrationResponse("Authenticator did not provide attested credential data")
+        raise InvalidRegistrationResponse(
+            "Authenticator did not provide attested credential data"
+        )
 
     attested_credential_data = auth_data.attested_credential_data
 
     if not attested_credential_data.credential_id:
-        raise InvalidRegistrationResponse("Authenticator did not provide a credential ID")
+        raise InvalidRegistrationResponse(
+            "Authenticator did not provide a credential ID"
+        )
 
     if not attested_credential_data.credential_public_key:
-        raise InvalidRegistrationResponse("Authenticator did not provide a credential public key")
+        raise InvalidRegistrationResponse(
+            "Authenticator did not provide a credential public key"
+        )
 
     if not attested_credential_data.aaguid:
         raise InvalidRegistrationResponse("Authenticator did not provide an AAGUID")
@@ -220,7 +280,10 @@ def verify_registration_response(
     if attestation_object.fmt == AttestationFormat.NONE:
         # A "none" attestation should not contain _anything_ in its attestation statement
         any_att_stmt_fields_set = any(
-            [field is not None for field in asdict(attestation_object.att_stmt).values()]
+            [
+                field is not None
+                for field in asdict(attestation_object.att_stmt).values()
+            ]
         )
 
         if any_att_stmt_fields_set:
@@ -290,9 +353,15 @@ def verify_registration_response(
     if not verified:
         raise InvalidRegistrationResponse("Attestation statement could not be verified")
 
-    parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    try:
+        parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    except InvalidBackupFlags as exc:
+        # Normalize the lower-level backup flag error into the registration failure contract
+        raise InvalidRegistrationResponse(
+            str(exc), RegistrationFailureCode.INVALID_BACKUP_FLAGS
+        ) from exc
 
-    return VerifiedRegistration(
+    verification = VerifiedRegistration(
         credential_id=attested_credential_data.credential_id,
         credential_public_key=attested_credential_data.credential_public_key,
         sign_count=auth_data.sign_count,
@@ -304,3 +373,12 @@ def verify_registration_response(
         credential_device_type=parsed_backup_flags.credential_device_type,
         credential_backed_up=parsed_backup_flags.credential_backed_up,
     )
+    verification.device_identity = DeviceIdentity.from_registration(
+        verification,
+        rp_id=expected_rp_id,
+    )
+    verification.device_provenance = attestation_provenance_from_registration(
+        verification
+    )
+
+    return verification
