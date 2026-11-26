@@ -174,7 +174,12 @@ def verify_authentication_response(
     try:
         decoded_public_key = decode_credential_public_key(credential_public_key)
         crypto_public_key = decoded_public_key_to_cryptography(decoded_public_key)
+    except Exception as exc:
+        raise InvalidAuthenticationResponse(
+            "Credential public key was malformed. See __cause__ for more info"
+        ) from exc
 
+    try:
         verify_signature(
             public_key=crypto_public_key,
             signature_alg=decoded_public_key.alg,
@@ -183,8 +188,17 @@ def verify_authentication_response(
         )
     except InvalidSignature:
         raise InvalidAuthenticationResponse("Could not verify authentication signature")
+    except Exception as exc:
+        raise InvalidAuthenticationResponse(
+            "Could not verify authentication signature. See __cause__ for more info"
+        ) from exc
 
-    parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    try:
+        parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    except Exception as exc:
+        raise InvalidAuthenticationResponse(
+            "Authenticator data had invalid backup flags. See __cause__ for more info"
+        ) from exc
 
     return VerifiedAuthentication(
         credential_id=credential.raw_id,

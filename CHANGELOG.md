@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+**Changes:**
+
+- Credential public keys are now validated as COSE maps with the expected field types before a registration is accepted. COSE keys encoded as CBOR arrays, incomplete COSE maps, truncated uncompressed EC2 keys, and keys that cannot be converted into a usable public key are rejected consistently by both registration and authentication verification instead of being accepted and failing later
+- Attestation statements must be CBOR maps containing only fields defined for WebAuthn attestation formats
+
 ## v3.0.1
 
 **Changes:**

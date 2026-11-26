@@ -7,6 +7,7 @@ from webauthn.helpers import (
     bytes_to_base64url,
     byteslike_to_bytes,
     decode_credential_public_key,
+    decoded_public_key_to_cryptography,
     parse_attestation_object,
     parse_client_data_json,
     parse_backup_flags,
@@ -197,9 +198,17 @@ def verify_registration_response(
     if not attested_credential_data.aaguid:
         raise InvalidRegistrationResponse("Authenticator did not provide an AAGUID")
 
-    decoded_credential_public_key = decode_credential_public_key(
-        attested_credential_data.credential_public_key
-    )
+    try:
+        decoded_credential_public_key = decode_credential_public_key(
+            attested_credential_data.credential_public_key
+        )
+        # Make sure the key can actually be used for signature verification later.
+        # A structurally incomplete key must not be persisted as a new credential.
+        decoded_public_key_to_cryptography(decoded_credential_public_key)
+    except Exception as exc:
+        raise InvalidRegistrationResponse(
+            "Credential public key was malformed. See __cause__ for more info"
+        ) from exc
 
     if decoded_credential_public_key.alg not in supported_pub_key_algs:
         raise InvalidRegistrationResponse(
@@ -290,7 +299,12 @@ def verify_registration_response(
     if not verified:
         raise InvalidRegistrationResponse("Attestation statement could not be verified")
 
-    parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    try:
+        parsed_backup_flags = parse_backup_flags(auth_data.flags)
+    except Exception as exc:
+        raise InvalidRegistrationResponse(
+            "Authenticator data had invalid backup flags. See __cause__ for more info"
+        ) from exc
 
     return VerifiedRegistration(
         credential_id=attested_credential_data.credential_id,
