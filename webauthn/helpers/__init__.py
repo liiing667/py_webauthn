@@ -2,6 +2,14 @@ from .aaguid_to_string import aaguid_to_string
 from .base64url_to_bytes import base64url_to_bytes
 from .bytes_to_base64url import bytes_to_base64url
 from .byteslike_to_bytes import byteslike_to_bytes
+from .challenge_ledger import (
+    ChallengeLedger,
+    ChallengeLedgerError,
+    ChallengeReplayedError,
+    ChallengeScopeMismatchError,
+    UnknownChallengeError,
+    consume_challenge,
+)
 from .decode_credential_public_key import decode_credential_public_key
 from .decoded_public_key_to_cryptography import decoded_public_key_to_cryptography
 from .encode_cbor import encode_cbor
@@ -22,6 +30,20 @@ from .parse_registration_options_json import parse_registration_options_json
 from .validate_certificate_chain import validate_certificate_chain
 from .verify_safetynet_timestamp import verify_safetynet_timestamp
 from .verify_signature import verify_signature
+from .structs import (
+    AuthenticationRequest,
+    AuthenticationCeremony,
+    AuthenticationRequestRegistry,
+    AuthenticationResult,
+    AuthenticationResultStatus,
+    AuthenticationStage,
+    ChallengeStep,
+    ChallengeStepStatus,
+    FailureStage,
+    FailureStageName,
+    RequestStatus,
+    ResponseField,
+)
 
 __all__ = [
     "aaguid_to_string",
